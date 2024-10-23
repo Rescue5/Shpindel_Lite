@@ -1,10 +1,11 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, messagebox  # Импортируем messagebox
 import serial
 import serial.tools.list_ports
 import threading
 import time
 import csv
+import os
 
 # Global variables
 ser = None
@@ -14,6 +15,7 @@ stop_event = threading.Event()
 test_running = threading.Event()
 lock = threading.Lock()
 log_file_lock = threading.Lock()
+stand_name = "пропеллер"  # Пример типа стенда
 
 def log_to_console(message):
     """Logs messages to the console window."""
@@ -46,9 +48,7 @@ def connect_to_port():
         log_to_console(f"Не удалось подключиться к {port}: {e}")
 
 def read_serial():
-    """Постоянно читает данные из COM-порта и выводит их в консоль. Также логирует данные, если тест запущен."""
-    global log_file, csv_file
-
+    """Читает данные из COM-порта и выводит их в консоль."""
     while not stop_event.is_set():
         if ser is not None and ser.is_open:
             try:
@@ -62,15 +62,7 @@ def read_serial():
 
                     if data:
                         log_to_console(data)  # Выводим данные в консоль
-
-                        # Записываем в лог-файл, если тест запущен
-                        if test_running.is_set() and log_file and csv_file:
-                            with log_file_lock:
-                                try:
-                                    with open(log_file, 'a') as lf:
-                                        lf.write(data + '\n')
-                                except Exception as e:
-                                    log_to_console(f"Ошибка записи в лог-файл: {e}")
+                        # Здесь можно добавить дополнительную логику для обработки данных, если нужно
 
             except serial.SerialException as e:
                 log_to_console(f"Ошибка чтения из COM-порта: {e}")
@@ -78,20 +70,48 @@ def read_serial():
         else:
             time.sleep(1)  # Ждем подключения
 
-def log_to_file(data):
-    """Logs data to both text and CSV files."""
-    if propeller_name:
-        with open(f"{propeller_name}.log", "a") as log_file:
-            log_file.write(data + "\n")
-        with open(f"{propeller_name}.csv", "a", newline='') as csv_file:
-            writer = csv.writer(csv_file)
-            writer.writerow([time.strftime("%Y-%m-%d %H:%M:%S"), data])
+def parse_and_save_to_csv(data):
+    """Парсит строку и записывает данные в CSV файл."""
+
+    if data.startswith("Момент:"):
+        parts = data.split(":")
+        try:
+            moment = float(parts[1].strip())
+            thrust = float(parts[3].strip())
+            rpm = int(parts[5].strip())
+
+            write_headers = False
+            if test_running.is_set() and csv_file:
+                if not os.path.exists(csv_file):
+                    write_headers = True
+                else:
+                    # Проверяем размер файла, если пуст — пишем заголовки
+                    if os.path.getsize(csv_file) == 0:
+                        write_headers = True
+
+                with log_file_lock:
+                    with open(csv_file, 'a', newline='') as csvfile:
+                        csv_writer = csv.writer(csvfile, delimiter=';')
+                        if write_headers:
+                            csv_writer.writerow(["Moment", "Thrust", "RPM"])  # Заголовки
+
+                        # Записываем данные
+                        csv_writer.writerow([moment, thrust, rpm])
+
+        except (IndexError, ValueError) as e:
+            log_to_console(f"Ошибка парсинга данных: {data} | Ошибка: {e}")
 
 def start_logging():
     """Starts the logging process."""
     global propeller_name, log_file, csv_file
     propeller_name = propeller_entry.get()
     if propeller_name:
+        # Проверяем, существует ли файл
+        if os.path.exists(f"{propeller_name}.log"):
+            # Выводим предупреждение о перезаписи
+            if not messagebox.askyesno("Предупреждение", f"Файл {propeller_name}.log уже существует. Перезаписать?"):
+                return  # Если пользователь нажал "Нет", выходим из функции
+
         log_to_console(f"Логирование для пропеллера {propeller_name} начато.")
         log_file = f"{propeller_name}.log"
         csv_file = f"{propeller_name}.csv"
