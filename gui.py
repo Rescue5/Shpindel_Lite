@@ -153,7 +153,7 @@ def stop_logging():
 
 # GUI setup
 root = tk.Tk()
-root.title("Упрощенная программа для стенда")
+root.title("Тестирование")
 root.geometry("800x400")
 
 main_frame = ttk.Frame(root)
