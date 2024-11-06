@@ -20,8 +20,8 @@ stand_name = "пропеллер"  # Пример типа стенда
 
 
 def write_to_log_file(message):
-    """Записывает сообщение в лог-файл."""
-    if log_file:
+    """Записывает сообщение в лог-файл, если логирование активно."""
+    if log_file and test_running.is_set():  # Проверка, активен ли процесс логирования
         with log_file_lock:
             with open(log_file, 'a') as f:
                 f.write(message + "\n")
@@ -148,7 +148,6 @@ def stop_logging():
     """Stops the logging process."""
     test_running.clear()
     log_to_console("Логирование остановлено.")
-
 
 
 # GUI setup
